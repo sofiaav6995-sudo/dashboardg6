@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estación de Monitoreo Ambiental - Instituto Leonardo Murialdo</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Orbitron & Rajdhani -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- MQTT.js (cliente MQTT por WebSockets) -->
+    <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            black: '#030307',
+                            card: 'rgba(8, 12, 26, 0.94)',
+                            cyan: '#00f0ff',
+                            purple: '#a855f7',
+                            green: '#00ff66',
+                            yellow: '#ffcc00',
+                            border: 'rgba(0, 240, 255, 0.6)'
+                        }
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif'],
+                        rajdhani: ['Rajdhani', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #020205;
+            color: #ffffff;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(8, 12, 26, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 2px solid rgba(0, 240, 255, 0.45);
+            box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        .glass-panel-purple {
+            background: rgba(20, 8, 35, 0.94);
+            backdrop-filter: blur(16px);
+            border: 2px solid rgba(168, 85, 247, 0.65);
+            box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        .neon-text-cyan {
+            text-shadow: none;
+        }
+
+        .neon-text-purple {
+            text-shadow: none;
+        }
+
+        .neon-text-green {
+            text-shadow: none;
+        }
+
+        .neon-text-yellow {
+            text-shadow: none;
+        }
+
+        .tilt-card {
+            transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+            transform-style: preserve-3d;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #030307;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #00f0ff;
+            border-radius: 5px;
+        }
+
+        .scanline {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
+            background-size: 100% 4px;
+            z-index: 40;
+            opacity: 0.2;
+        }
+
+        #bg-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="relative text-white">
+
+    <div class="scanline"></div>
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- BARRA DE NAVEGACIÓN REORDENADA -->
+    <nav class="sticky top-0 z-50 glass-panel border-b-2 border-cyber-cyan/60 px-4 py-3 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center">
+            <a href="#hero" class="flex items-center space-x-3 group">
+                <div class="w-10 h-10 rounded-lg bg-cyber-cyan/20 border-2 border-cyber-cyan flex items-center justify-center text-cyber-cyan group-hover:shadow-[0_0_20px_#00f0ff] transition-all">
+                    <i class="fa-solid fa-microchip text-xl"></i>
+                </div>
+                <div>
+                    <span class="font-orbitron font-black text-lg tracking-wider text-white">MURIALDO <span class="text-cyber-cyan">3D</span></span>
+                    <span class="text-xs block text-cyber-cyan font-mono font-bold -mt-1">ESTACIÓN AMBIENTAL 2026</span>
+                </div>
+            </a>
+
+            <button id="menu-btn" class="md:hidden text-cyber-cyan hover:text-white focus:outline-none text-2xl">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <div id="nav-links" class="hidden md:flex flex-wrap items-center space-x-1 lg:space-x-5 text-sm font-bold tracking-wider font-orbitron uppercase mt-4 md:mt-0 w-full md:w-auto">
+                <a href="#dashboard" class="hover:text-cyber-green transition-colors py-1 px-2 text-cyber-green font-black">Dashboard</a>
+                <a href="#historico" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-cyber-cyan font-black">Histórico</a>
+                <a href="#proyecto" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Proyecto</a>
+                <a href="#objetivos" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Objetivos</a>
+                <a href="#sensores" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Sensores</a>
+                <a href="#funcionamiento" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Pasos</a>
+                <a href="#solucion-lcd" class="hover:text-cyber-purple transition-colors py-1 px-2 text-cyber-purple font-black">Arreglo LCD</a>
+                <a href="#materiales" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Costos</a>
+                <a href="#galeria" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Armado</a>
+                <a href="#equipo" class="hover:text-cyber-cyan transition-colors py-1 px-2 text-slate-100">Equipo</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- SECCIÓN 1: PRESENTACIÓN (CON LA IMAGEN DEL LCD Y TONOS TRANQUILOS) -->
+    <section id="hero" class="relative min-h-[85vh] flex items-center justify-center pt-8 pb-16 px-4">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            
+            <div class="space-y-6 z-10">
+                <div class="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-slate-900/80 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold uppercase tracking-widest">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span>
+                    <span>PROYECTO FINAL 2026 · 6º INFO "A"</span>
+                </div>
+
+                <h1 class="text-4xl md:text-6xl font-orbitron font-black text-white leading-tight">
+                    ESTACIÓN DE <br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-400">
+                        MONITOREO AMBIENTAL
+                    </span>
+                </h1>
+
+                <div class="bg-slate-900/60 backdrop-blur-md p-6 rounded-xl border-l-4 border-cyan-500/80 border-y border-r border-cyan-500/20 space-y-3">
+                    <p class="font-orbitron font-extrabold text-lg text-cyan-300">
+                        <i class="fa-solid fa-graduation-cap mr-2"></i>Instituto Leonardo Murialdo
+                    </p>
+                    <p class="text-white text-base font-bold">
+                        <span class="text-amber-300 font-extrabold">6º Informática "A"</span> · <span class="text-purple-300 font-extrabold">Equipo N.º 6</span>
+                    </p>
+                    <p class="text-sm text-slate-300 font-medium">
+                        Dispositivo portátil y automático que mide las condiciones del ambiente en tiempo real usando un chip ESP32 WROOM.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-4 pt-2">
+                    <a href="#dashboard" class="px-6 py-3 rounded-lg font-orbitron font-bold bg-cyan-600 text-white hover:bg-cyan-500 transition-all flex items-center space-x-2 text-base shadow-sm">
+                        <i class="fa-solid fa-gauge-high"></i>
+                        <span>PROBAR PANEL</span>
+                    </a>
+                    <a href="#proyecto" class="px-6 py-3 rounded-lg font-orbitron font-bold bg-slate-900/80 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-950/30 transition-all flex items-center space-x-2 text-base">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>VER DETALLES</span>
+                    </a>
+                    <a href="#materiales" class="px-6 py-3 rounded-lg font-orbitron font-bold bg-slate-900/80 text-purple-300 border border-purple-500/40 hover:bg-purple-950/30 transition-all flex items-center space-x-2 text-base">
+                        <i class="fa-solid fa-coins"></i>
+                        <span>COSTOS</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- VISTA DE LA PANTALLA LCD (EN VIVO) -->
+            <div class="relative w-full flex items-center justify-center p-4">
+                <div class="bg-slate-900/90 p-6 rounded-2xl border border-cyan-500/40 w-full max-w-lg shadow-md">
+                    <div class="flex justify-between items-center mb-3 border-b border-cyan-500/20 pb-2">
+                        <span class="font-orbitron text-xs font-bold text-cyan-300 tracking-wider">VISTA DE LA PANTALLA LCD</span>
+                        <span class="text-xs font-mono text-slate-400">16x2 Caracteres</span>
+                    </div>
+                    <div class="bg-[#07130a] p-4 rounded-xl font-mono text-emerald-400 border border-slate-800 tracking-wider text-xl space-y-1.5 text-center font-bold">
+                        <div id="lcd-line1">T:--C  HA:--%</div>
+                        <div id="lcd-line2">L:--%   HS:--%</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- SECCIÓN 5: DASHBOARD INTERACTIVO EN TIEMPO REAL -->
+    <section id="dashboard" class="py-16 px-4 glass-panel-purple my-8 relative border-y-4 border-cyber-purple">
+        <div class="max-w-7xl mx-auto space-y-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white">
+                        PANEL EN <span class="text-cyber-green neon-text-green">TIEMPO REAL</span>
+                    </h2>
+                    <p class="text-slate-200 text-sm font-bold font-mono">Datos en vivo enviados por los sensores de la estación</p>
+                </div>
+                <div id="conn-badge" class="px-5 py-2.5 rounded-xl font-orbitron text-xs font-extrabold border-2 border-yellow-400 text-yellow-300 bg-yellow-400/20 flex items-center space-x-2">
+                    <span id="conn-dot" class="w-3 h-3 rounded-full bg-yellow-300 inline-block animate-pulse"></span>
+                    <span id="conn-text">CONECTANDO AL BROKER...</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-orbitron text-xs text-cyber-cyan font-black tracking-widest">TEMPERATURA</span>
+                        <i class="fa-solid fa-temperature-high text-cyber-cyan text-xl"></i>
+                    </div>
+                    <div class="text-center py-2">
+                        <span id="val-temp" class="text-5xl md:text-6xl font-orbitron font-black text-white neon-text-cyan">--</span>
+                        <span class="text-cyber-cyan font-orbitron text-2xl font-bold">°C</span>
+                        <div id="status-temp" class="text-sm font-mono font-bold mt-2 text-emerald-400">Esperando datos...</div>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-3.5 p-0.5 border border-cyber-cyan/40">
+                        <div id="bar-temp" class="bg-cyber-cyan h-2.5 rounded-full transition-all duration-300 shadow-[0_0_10px_#00f0ff]" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-blue-400 space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-orbitron text-xs text-blue-400 font-black tracking-widest">HUMEDAD AIRE</span>
+                        <i class="fa-solid fa-wind text-blue-400 text-xl"></i>
+                    </div>
+                    <div class="text-center py-2">
+                        <span id="val-hum-aire" class="text-5xl md:text-6xl font-orbitron font-black text-white">--</span>
+                        <span class="text-blue-400 font-orbitron text-2xl font-bold">%</span>
+                        <div id="status-hum-aire" class="text-sm font-mono font-bold mt-2 text-slate-300">Esperando datos...</div>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-3.5 p-0.5 border border-blue-400/40">
+                        <div id="bar-hum-aire" class="bg-blue-400 h-2.5 rounded-full transition-all duration-300 shadow-[0_0_10px_#60a5fa]" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-yellow space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-orbitron text-xs text-cyber-yellow font-black tracking-widest">LUZ AMBIENTAL</span>
+                        <i class="fa-solid fa-sun text-cyber-yellow text-xl"></i>
+                    </div>
+                    <div class="text-center py-2">
+                        <span id="val-luz" class="text-5xl md:text-6xl font-orbitron font-black text-white neon-text-yellow">--</span>
+                        <span class="text-cyber-yellow font-orbitron text-2xl font-bold">%</span>
+                        <div id="val-lux" class="text-sm font-mono font-bold mt-2 text-slate-300">-- lx</div>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-3.5 p-0.5 border border-cyber-yellow/40">
+                        <div id="bar-luz" class="bg-cyber-yellow h-2.5 rounded-full transition-all duration-300 shadow-[0_0_10px_#ffcc00]" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-green space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-orbitron text-xs text-cyber-green font-black tracking-widest">HUMEDAD SUELO</span>
+                        <i class="fa-solid fa-seedling text-cyber-green text-xl"></i>
+                    </div>
+                    <div class="text-center py-2">
+                        <span id="val-suelo" class="text-5xl md:text-6xl font-orbitron font-black text-white neon-text-green">--</span>
+                        <span class="text-cyber-green font-orbitron text-2xl font-bold">%</span>
+                        <div id="status-suelo" class="text-sm font-mono font-bold mt-2 text-cyber-green">Esperando datos...</div>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-3.5 p-0.5 border border-cyber-green/40">
+                        <div id="bar-suelo" class="bg-cyber-green h-2.5 rounded-full transition-all duration-300 shadow-[0_0_10px_#00ff66]" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- SECCIÓN: HISTÓRICO DE MEDICIONES -->
+    <section id="historico" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Histórico de <span class="text-cyber-cyan neon-text-cyan">Mediciones</span>
+                </h2>
+                <p class="text-slate-300 font-mono font-bold text-sm">Cada lectura real recibida de la estación se guarda automáticamente</p>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full"></div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-4 glass-panel p-5 rounded-2xl border-2 border-cyber-cyan/50">
+                <div class="flex flex-wrap gap-3"></div>
+                <div class="flex flex-wrap gap-4">
+                    <button id="btn-exportar" class="px-5 py-3 rounded-xl font-orbitron text-xs font-black glass-panel text-cyber-yellow border-2 border-cyber-yellow hover:bg-cyber-yellow hover:text-black transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-file-csv text-base"></i>
+                        <span>EXPORTAR CSV</span>
+                    </button>
+                    <button id="btn-limpiar" class="px-5 py-3 rounded-xl font-orbitron text-xs font-black glass-panel text-rose-400 border-2 border-rose-500 hover:bg-rose-500 hover:text-white transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-trash-can text-base"></i>
+                        <span>LIMPIAR HISTÓRICO</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan/50 space-y-4">
+                <div class="flex justify-between items-center border-b-2 border-cyber-cyan/30 pb-3">
+                    <h3 class="text-xl font-orbitron font-bold text-white flex items-center">
+                        <i class="fa-solid fa-chart-line text-cyber-cyan mr-3 text-2xl"></i>
+                        Evolución Temporal de las Variables
+                    </h3>
+                    <span class="text-xs font-mono font-bold text-cyber-cyan bg-cyber-cyan/10 px-3 py-1 rounded-lg border border-cyber-cyan/40">MQTT Live Feed</span>
+                </div>
+                <div class="relative w-full h-[350px] md:h-[420px]">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan/50 space-y-4">
+                <div class="flex justify-between items-center border-b-2 border-cyber-cyan/30 pb-3">
+                    <h3 class="text-xl font-orbitron font-bold text-white flex items-center">
+                        <i class="fa-solid fa-table text-cyber-cyan mr-3 text-2xl"></i>
+                        Tabla de Registros Almacenados
+                    </h3>
+                    <span id="total-registros" class="text-sm font-mono text-cyber-cyan font-black bg-cyber-cyan/20 px-4 py-1.5 rounded-xl border-2 border-cyber-cyan">
+                        0 Registros
+                    </span>
+                </div>
+
+                <div class="overflow-x-auto max-h-[380px] overflow-y-auto rounded-xl border-2 border-slate-700">
+                    <table class="w-full text-left text-sm font-mono font-bold">
+                        <thead class="bg-slate-900 text-cyber-cyan font-orbitron text-xs sticky top-0 z-10 border-b-2 border-cyber-cyan backdrop-blur-md">
+                            <tr>
+                                <th class="p-3.5">HORA</th>
+                                <th class="p-3.5">TEMP (°C)</th>
+                                <th class="p-3.5">HUM. AIRE (%)</th>
+                                <th class="p-3.5">LUZ (%)</th>
+                                <th class="p-3.5">HUM. SUELO (%)</th>
+                                <th class="p-3.5">ESTADO GENERAL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-historico-body" class="divide-y-2 divide-slate-800 bg-slate-950/80">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- SECCIÓN 2: ¿DE QUÉ TRATA EL PROYECTO? -->
+    <section id="proyecto" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    ¿De qué trata <span class="text-cyber-cyan neon-text-cyan">el Proyecto?</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full shadow-[0_0_10px_#00f0ff]"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="md:col-span-2 glass-panel p-8 rounded-2xl border-2 border-cyber-cyan/50 space-y-5 relative overflow-hidden tilt-card">
+                    <h3 class="text-2xl font-orbitron font-bold text-white flex items-center">
+                        <i class="fa-solid fa-microchip text-cyber-cyan mr-3 text-3xl"></i>
+                        Una estación portátil y accesible
+                    </h3>
+                    <p class="text-white text-lg leading-relaxed font-medium">
+                        Creamos un equipo compacto que mide el clima de forma automática. Funciona tanto adentro como al aire libre, toma lecturas del entorno mediante sensores y te muestra la información al instante en una pantalla y en una página web.
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                        <div class="p-4 rounded-xl bg-slate-900 border-2 border-cyber-cyan/40">
+                            <span class="text-cyber-cyan font-orbitron font-black block text-base mb-1">Cerebro del Sistema</span>
+                            <p class="text-sm text-slate-100 font-semibold">ESP32 WROOM: seleccionado especialmente por su gran alcance y buena recepción de señal Wi-Fi.</p>
+                        </div>
+                        <div class="p-4 rounded-xl bg-slate-900 border-2 border-cyber-purple/40">
+                            <span class="text-cyber-purple font-orbitron font-black block text-base mb-1">Protección Exterior</span>
+                            <p class="text-sm text-slate-100 font-semibold">Caja plástica estanca que protege todo el circuito del clima.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-purple/50 space-y-4 tilt-card">
+                    <h3 class="text-xl font-orbitron font-bold text-cyber-purple border-b-2 border-cyber-purple/40 pb-2">
+                        <i class="fa-solid fa-cubes mr-2"></i>Sensores Usados
+                    </h3>
+                    <ul class="space-y-3 text-sm font-bold">
+                        <li class="flex items-center space-x-3 p-2.5 rounded-lg bg-slate-900 border border-cyber-cyan/30">
+                            <i class="fa-solid fa-temperature-high text-cyber-cyan text-lg"></i>
+                            <span><b>DHT22:</b> Temp. y Humedad</span>
+                        </li>
+                        <li class="flex items-center space-x-3 p-2.5 rounded-lg bg-slate-900 border border-cyber-yellow/30">
+                            <i class="fa-solid fa-sun text-cyber-yellow text-lg"></i>
+                            <span><b>BH1750:</b> Luz ambiental</span>
+                        </li>
+                        <li class="flex items-center space-x-3 p-2.5 rounded-lg bg-slate-900 border border-cyber-green/30">
+                            <i class="fa-solid fa-seedling text-cyber-green text-lg"></i>
+                            <span><b>Capacitivo v1.2:</b> Agua en tierra</span>
+                        </li>
+                        <li class="flex items-center space-x-3 p-2.5 rounded-lg bg-slate-900 border border-blue-400/30">
+                            <i class="fa-solid fa-desktop text-blue-400 text-lg"></i>
+                            <span><b>LCD 16x2:</b> Pantalla local</span>
+                        </li>
+                        <li class="flex items-center space-x-3 p-2.5 rounded-lg bg-slate-900 border border-red-400/30">
+                            <i class="fa-solid fa-car-battery text-red-400 text-lg"></i>
+                            <span><b>Batería 12V:</b> Energía continua</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 3: OBJETIVOS -->
+    <section id="objetivos" class="py-16 px-4 bg-slate-950/80 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Objetivo <span class="text-cyber-green neon-text-green">Principal</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-green mx-auto rounded-full shadow-[0_0_10px_#00ff66]"></div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-green relative">
+                <h3 class="text-2xl font-orbitron font-black text-cyber-green mb-3 flex items-center">
+                    <i class="fa-solid fa-bullseye mr-3 text-3xl"></i>
+                    ¿Qué queremos lograr?
+                </h3>
+                <p class="text-white text-lg md:text-xl font-bold leading-relaxed">
+                    Armar un dispositivo económico y fácil de transportar que mida la temperatura, la humedad del aire, la luz del ambiente y la humedad de la tierra, mostrando todo en tiempo real.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="glass-panel p-6 rounded-xl border-2 border-cyber-cyan/50 text-center space-y-3 tilt-card">
+                    <div class="text-4xl">🌡️</div>
+                    <h4 class="font-orbitron font-black text-lg text-white">1. Medir Clima</h4>
+                    <p class="text-sm text-slate-100 font-semibold">Saber exacto el calor y la humedad del aire.</p>
+                </div>
+                <div class="glass-panel p-6 rounded-xl border-2 border-cyber-yellow/50 text-center space-y-3 tilt-card">
+                    <div class="text-4xl">☀️</div>
+                    <h4 class="font-orbitron font-black text-lg text-white">2. Medir Luz</h4>
+                    <p class="text-sm text-slate-100 font-semibold">Calcular cuánta iluminación hay en el lugar.</p>
+                </div>
+                <div class="glass-panel p-6 rounded-xl border-2 border-cyber-green/50 text-center space-y-3 tilt-card">
+                    <div class="text-4xl">🌱</div>
+                    <h4 class="font-orbitron font-black text-lg text-white">3. Medir Suelo</h4>
+                    <p class="text-sm text-slate-100 font-semibold">Detectar si la planta o la tierra necesita riego.</p>
+                </div>
+                <div class="glass-panel p-6 rounded-xl border-2 border-cyber-purple/50 text-center space-y-3 tilt-card">
+                    <div class="text-4xl">📊</div>
+                    <h4 class="font-orbitron font-black text-lg text-white">4. Mostrar Datos</h4>
+                    <p class="text-sm text-slate-100 font-semibold">Ver los números en la pantalla y en la web.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 4: SENSORES Y TABLA SIMPLE -->
+    <section id="sensores" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Sensores <span class="text-cyber-cyan neon-text-cyan">Explicados</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full"></div>
+            </div>
+
+            <p class="text-center text-slate-300 text-sm font-mono">Tocá un sensor para ver cómo funciona y cómo interpretar sus valores</p>
+
+            <div id="sensor-botones" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" role="tablist">
+                <button type="button" role="tab" data-sensor="dht22" class="sensor-btn glass-panel p-6 rounded-2xl border-2 border-cyber-cyan/60 text-left space-y-3 transition-all hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                    <div class="w-12 h-12 rounded-xl bg-cyber-cyan/20 border border-cyber-cyan flex items-center justify-center text-cyber-cyan text-2xl">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><path d="M11.5 17.5V10"/></svg>
+                    </div>
+                    <h3 class="text-xl font-orbitron font-bold text-white">DHT22</h3>
+                    <span class="text-xs text-cyber-cyan font-bold block font-mono">Temperatura y Humedad</span>
+                    <p class="text-slate-100 text-sm font-medium leading-relaxed">Mide la temperatura (-40 °C a 80 °C) y la humedad del aire con alta precisión.</p>
+                    <span class="text-xs font-mono font-bold text-cyber-cyan flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> Ver detalle</span>
+                </button>
+
+                <button type="button" role="tab" data-sensor="bh1750" class="sensor-btn glass-panel p-6 rounded-2xl border-2 border-cyber-yellow/60 text-left space-y-3 transition-all hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                    <div class="w-12 h-12 rounded-xl bg-cyber-yellow/20 border border-cyber-yellow flex items-center justify-center text-cyber-yellow text-2xl">
+                        <i class="fa-solid fa-sun"></i>
+                    </div>
+                    <h3 class="text-xl font-orbitron font-bold text-white">BH1750</h3>
+                    <span class="text-xs text-cyber-yellow font-bold block font-mono">Sensor de Luz</span>
+                    <p class="text-slate-100 text-sm font-medium leading-relaxed">Mide la cantidad de luz del lugar de la misma forma que la perciben nuestros ojos.</p>
+                    <span class="text-xs font-mono font-bold text-cyber-yellow flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> Ver detalle</span>
+                </button>
+
+                <button type="button" role="tab" data-sensor="suelo" class="sensor-btn glass-panel p-6 rounded-2xl border-2 border-cyber-green/60 text-left space-y-3 transition-all hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                    <div class="w-12 h-12 rounded-xl bg-cyber-green/20 border border-cyber-green flex items-center justify-center text-cyber-green text-2xl">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21v-9"/><path d="M12 12c0-4-3-6-7-6 0 4 3 6 7 6z"/><path d="M12 10c0-3.5 2.5-6 7-6 0 4-3 6-7 6z"/><path d="M5 21h14"/></svg>
+                    </div>
+                    <h3 class="text-xl font-orbitron font-bold text-white">Capacitivo v1.2</h3>
+                    <span class="text-xs text-cyber-green font-bold block font-mono">Humedad de Tierra</span>
+                    <p class="text-slate-100 text-sm font-medium leading-relaxed">Mide el agua en la tierra sin sufrir corrosión ni desgaste con el paso del tiempo.</p>
+                    <span class="text-xs font-mono font-bold text-cyber-green flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> Ver detalle</span>
+                </button>
+
+                <button type="button" role="tab" data-sensor="lcd" class="sensor-btn glass-panel p-6 rounded-2xl border-2 border-blue-400/60 text-left space-y-3 transition-all hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                    <div class="w-12 h-12 rounded-xl bg-blue-400/20 border border-blue-400 flex items-center justify-center text-blue-400 text-2xl">
+                        <i class="fa-solid fa-desktop"></i>
+                    </div>
+                    <h3 class="text-xl font-orbitron font-bold text-white">LCD 16x2</h3>
+                    <span class="text-xs text-blue-400 font-bold block font-mono">Pantalla Local</span>
+                    <p class="text-slate-100 text-sm font-medium leading-relaxed">Muestra los valores del ambiente directamente en el dispositivo sin requerir internet.</p>
+                    <span class="text-xs font-mono font-bold text-blue-400 flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> Ver detalle</span>
+                </button>
+            </div>
+
+            <div id="sensor-detalle" class="glass-panel p-6 md:p-8 rounded-2xl border-2 border-cyber-cyan/50 space-y-6" aria-live="polite"></div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 6: CÓMO FUNCIONA EL SISTEMA -->
+    <section id="funcionamiento" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    ¿Cómo funciona? <span class="text-cyber-cyan neon-text-cyan">(En 6 Pasos)</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full"></div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-cyber-cyan">01</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Encender</h3>
+                    <p class="text-xs text-slate-100 font-semibold">La batería de 12V le da energía a la estación.</p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-purple space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-cyber-purple">02</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Regular</h3>
+                    <p class="text-xs text-slate-100 font-semibold">El regulador LM7805 baja y estabiliza de 12V a 5V para alimentar la pantalla y proteger el circuito.</p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-yellow space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-cyber-yellow">03</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Medir</h3>
+                    <p class="text-xs text-slate-100 font-semibold">Los sensores sensan el aire, la luz y la tierra.</p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-green space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-cyber-green">04</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Procesar</h3>
+                    <p class="text-xs text-slate-100 font-semibold">El ESP32 WROOM procesa los datos recibidos.</p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-purple-400 space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-purple-300">05</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Enviar</h3>
+                    <p class="text-xs text-slate-100 font-semibold">El ESP32 WROOM transmite los datos por Wi-Fi de alta cobertura al servidor.</p>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl border-2 border-blue-400 space-y-3 text-center tilt-card">
+                    <span class="text-3xl font-black font-orbitron text-blue-300">06</span>
+                    <h3 class="font-orbitron font-bold text-white text-lg">Mostrar</h3>
+                    <p class="text-xs text-slate-100 font-semibold">Se ven los valores en el LCD y quedan registrados en la página web.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 7: PROBLEMA Y SOLUCIÓN DEL LCD -->
+    <section id="solucion-lcd" class="py-16 px-4 bg-red-950/30 relative border-y-4 border-red-600/60">
+        <div class="max-w-7xl mx-auto space-y-8">
+            <div class="text-center space-y-3">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Problemas <span class="text-cyber-purple neon-text-purple">y Soluciones</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-purple mx-auto rounded-full"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass-panel-purple p-8 rounded-2xl border-2 border-red-500 space-y-4">
+                    <h3 class="text-2xl font-orbitron font-black text-red-400 flex items-center">
+                        <i class="fa-solid fa-triangle-exclamation mr-3 text-3xl"></i>¿Qué pasó?
+                    </h3>
+                    <p class="text-white text-lg leading-relaxed font-medium">
+                        Durante las primeras pruebas, el módulo <strong>Step Down falló y le mandó directamente los 12V</strong> de la batería a la pantalla LCD. Como esta última trabaja únicamente con 5V, <strong class="text-red-300 font-black">la pantalla se quemó al instante.</strong> Además, contábamos con un ESP32 Mini que presentaba serios inconvenientes de alcance inalámbrico.
+                    </p>
+                </div>
+
+                <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-green space-y-4">
+                    <h3 class="text-2xl font-orbitron font-black text-cyber-green flex items-center">
+                        <i class="fa-solid fa-circle-check mr-3 text-3xl"></i>¿Cómo lo arreglamos?
+                    </h3>
+                    <p class="text-white text-lg leading-relaxed font-medium">
+                        Reemplazamos el Step Down defectuoso por un regulador de voltaje <strong class="text-cyber-green font-black">LM7805</strong>, el cual regula de forma fija y segura los 5V necesarios para la pantalla display LCD. Adicionalmente, <strong class="text-cyber-green font-black">cambiamos el ESP32 Mini por el ESP NodeMCU-32S (ESP32 WROOM)</strong>, garantizando así una excelente recepción de señal Wi-Fi.
+                    </p>
+                </div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan text-center space-y-4">
+                <h3 class="text-lg font-orbitron font-black text-cyber-cyan tracking-widest">ESQUEMA DE CONEXIÓN CORRECTA</h3>
+                <div class="flex flex-col md:flex-row items-center justify-center gap-4 font-mono text-base font-bold">
+                    <div class="p-4 rounded-xl bg-slate-900 border-2 border-red-500 text-red-400 shadow-[0_0_10px_#ef4444]">
+                        Batería 12V
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-cyber-cyan text-xl hidden md:block"></i>
+                    <i class="fa-solid fa-arrow-down text-cyber-cyan text-xl md:hidden"></i>
+                    <div class="p-4 rounded-xl bg-slate-900 border-2 border-cyber-yellow text-cyber-yellow shadow-[0_0_10px_#ffcc00]">
+                        Regulador LM7805 (Salida 5V constante)
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-cyber-cyan text-xl hidden md:block"></i>
+                    <i class="fa-solid fa-arrow-down text-cyber-cyan text-xl md:hidden"></i>
+                    <div class="p-4 rounded-xl bg-slate-900 border-2 border-cyber-green text-cyber-green shadow-[0_0_10px_#00ff66]">
+                        ESP32 WROOM + Sensores + LCD
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 8: MATERIALES Y PRECIOS -->
+    <section id="materiales" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Materiales <span class="text-cyber-cyan neon-text-cyan">& Costos</span>
+                </h2>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full"></div>
+            </div>
+
+            <div class="glass-panel-purple p-8 rounded-2xl border-4 border-cyber-purple text-center space-y-3">
+                <span class="font-orbitron text-sm font-black text-cyber-purple uppercase tracking-widest">Presupuesto Final</span>
+                <h3 class="text-3xl md:text-6xl font-orbitron font-black text-white">
+                    TOTAL INVERTIDO: <span class="text-cyber-green neon-text-green">$50.000 ARS</span>
+                </h3>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                
+              <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-cyan/60 space-y-3 tilt-card">
+    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTekXYlWyIgHfeaDKbWjbzIz8oHuuJiX7IyRa7PEsThlH0JOaRD8TLbA_8&s=10" alt="ESP32 WROOM" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-cyan/30" onerror="this.src='https://placehold.co/200x200/0f172a/00f0ff?text=ESP32+WROOM'">
+    <h4 class="font-bold text-white text-base">ESP32 WROOM (Wi-Fi Alta Cobertura)</h4>
+    <div class="text-cyber-cyan font-black font-orbitron text-lg">$12.000,00 ARS</div>
+</div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-cyan/60 space-y-3 tilt-card">
+                    <img src="https://http2.mlstatic.com/D_NQ_NP_989245-MLA111962881138_062026-O.webp" alt="DHT22" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-cyan/30" onerror="this.src='https://placehold.co/200x200/0f172a/00f0ff?text=DHT22'">
+                    <h4 class="font-bold text-white text-base">Sensor DHT22</h4>
+                    <div class="text-cyber-cyan font-black font-orbitron text-lg">$10.490,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-yellow/60 space-y-3 tilt-card">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR5OMSTX8W9MwYPVfQ8Ua5Xpvj1ACuWAVLxuNbMkFsVDg&s=10" alt="BH1750" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-yellow/30" onerror="this.src='https://placehold.co/200x200/0f172a/ffcc00?text=BH1750'">
+                    <h4 class="font-bold text-white text-base">Sensor BH1750</h4>
+                    <div class="text-cyber-yellow font-black font-orbitron text-lg">$3.202,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-green/60 space-y-3 tilt-card">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSvCT__48ZErx9YvTg2l7TSbzb1dp0zvgb1FoU_sYIUwFlL_FmCk7k9g4g&s=10" alt="Capacitivo" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-green/30" onerror="this.src='https://placehold.co/200x200/0f172a/00ff66?text=Capacitivo'">
+                    <h4 class="font-bold text-white text-base">Sensor Suelo v1.2</h4>
+                    <div class="text-cyber-green font-black font-orbitron text-lg">$2.244,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-slate-600 space-y-3 tilt-card">
+                    <img src="https://candy-ho.com/wp-content/uploads/2016/09/pcb5x7-2.jpg" alt="Placa 5x7" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-slate-700" onerror="this.src='https://placehold.co/200x200/0f172a/ffffff?text=Placa+5x7'">
+                    <h4 class="font-bold text-white text-base">Placa PCB 5x7 cm</h4>
+                    <div class="text-white font-black font-orbitron text-lg">$2.630,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-slate-600 space-y-3 tilt-card">
+                    <img src="https://candy-ho.com/wp-content/uploads/2016/09/236221-MLA20731670333_052016-O-4.jpg" alt="Pines" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-slate-700" onerror="this.src='https://placehold.co/200x200/0f172a/ffffff?text=Pines'">
+                    <h4 class="font-bold text-white text-base">Tira de Pines</h4>
+                    <div class="text-white font-black font-orbitron text-lg">$1.000,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-blue-400/60 space-y-3 tilt-card">
+                    <img src="https://candy-ho.com/wp-content/uploads/2017/10/lcdarduino16x111.jpg" alt="LCD 16x2" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-blue-400/30" onerror="this.src='https://placehold.co/200x200/0f172a/60a5fa?text=LCD+16x2'">
+                    <h4 class="font-bold text-white text-base">Pantalla LCD 16x2</h4>
+                    <div class="text-blue-400 font-black font-orbitron text-lg">$7.331,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-green/60 space-y-3 tilt-card">
+    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSUZGZUh32L025SAn1DLbuvvZ7r-osKSidXX7sNSEs9g6QrCuuUUSHWKTY&s=10" alt="Sensor de Suelo Capacitivo v1.2" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-green/30" onerror="this.src='https://placehold.co/200x200/0f172a/00ff66?text=Sensor+Suelo'">
+    <h4 class="font-bold text-white text-base">Regulador LM7805</h4>
+    <div class="text-cyber-green font-black font-orbitron text-lg">$2.244,00 ARS</div>
+</div>
+              
+              <div class="glass-panel p-5 rounded-2xl border-2 border-red-500/60 space-y-3 tilt-card">
+    <img src="https://tienda.starware.com.ar/wp-content/uploads/2025/03/modulo-multi-voltaje-generico-step-down-dc-dc-12v-33v-5v-1631-993.jpg" alt="Módulo Step Down DC-DC" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-red-500/30" onerror="this.src='https://placehold.co/200x200/0f172a/ef4444?text=Step+Down'">
+    <h4 class="font-bold text-white text-base">Módulo Step Down DC-DC (12V a 5V/3.3V)</h4>
+    <div class="text-red-400 font-black font-orbitron text-lg">$4.000,00</div>
+</div>
+
+               <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-yellow/60 space-y-3 tilt-card">
+    <img src="https://www.electrogeekshop.com/wp-content/uploads/2018/12/dsc01672-735ced40-be78-45bf-a517-0b16399d22d4.jpeg" alt="Sensor BH1750" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-yellow/30" onerror="this.src='https://placehold.co/200x200/0f172a/ffcc00?text=BH1750'">
+    <h4 class="font-bold text-white text-base">Sensor BH1750 (Luz Ambiental)</h4>
+    <div class="text-cyber-yellow font-black font-orbitron text-lg">$3.202,00 ARS</div>
+</div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-slate-600 space-y-3 tilt-card">
+                    <img src="https://candy-ho.com/wp-content/uploads/2022/08/5342.jpg" alt="Borneras" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-slate-700" onerror="this.src='https://placehold.co/200x200/0f172a/ffffff?text=Borneras'">
+                    <h4 class="font-bold text-white text-base">Borneras PCB</h4>
+                    <div class="text-white font-black font-orbitron text-lg">$873,00 ARS</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-cyan/60 space-y-3 tilt-card">
+                    <img src="https://dyncam.com.ar/wp-content/uploads/2025/06/GAB.CAE200.jpg" alt="Caja Estanca" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-cyber-cyan/30" onerror="this.src='https://placehold.co/200x200/0f172a/00f0ff?text=Caja+Estanca'">
+                    <h4 class="font-bold text-white text-base">Caja Plástica Estanca</h4>
+                    <div class="text-cyber-cyan font-black font-orbitron text-lg">Incluido</div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-red-500/60 space-y-3 tilt-card">
+                    <img src="https://acdn-us.mitiendanube.com/stores/006/497/527/products/vision-cp1245-2-f29d6562826bbe3bef17569042521976-1024-1024.webp" alt="Bateria 12V" class="w-full h-36 object-contain rounded-xl bg-slate-950 p-3 border border-red-500/30" onerror="this.src='https://placehold.co/200x200/0f172a/ef4444?text=Bateria+12V'">
+                    <h4 class="font-bold text-white text-base">Batería de 12V</h4>
+                    <div class="text-red-400 font-black font-orbitron text-lg">Incluido</div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 9: GALERÍA DE ARMADO PASO A PASO DETALLADO -->
+    <section id="galeria" class="py-16 px-4 bg-slate-950/90 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Paso a Paso <span class="text-cyber-green neon-text-green">del Cableado y Ensamblaje</span>
+                </h2>
+                <p class="text-slate-300 font-mono text-sm max-w-2xl mx-auto">
+                    (Nota técnica: Debido a problemas de alcance inalámbrico, reemplazamos el ESP32 C3 Super Mini por un ESP NodeMCU-32S)
+                </p>
+                <div class="w-24 h-1.5 bg-cyber-green mx-auto rounded-full"></div>
+            </div>
+
+            <!-- Paso a paso detallado en grilla -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <!-- Paso 1 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-cyan font-black bg-cyber-cyan/20 px-3 py-1 rounded-lg border border-cyber-cyan">PASO 01</span>
+                        <i class="fa-solid fa-microchip text-cyber-cyan text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">1. Ubicación en Protoboard</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Colocamos el ESP NodeMCU-32S en un lado de la protoboard, asegurando que sus dos hileras de pines queden en secciones separadas para evitar cortocircuitos. Dejamos libres los orificios adyacentes para insertar los jumpers.
+                    </p>
+                </div>
+
+                <!-- Paso 2 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-cyan font-black bg-cyber-cyan/20 px-3 py-1 rounded-lg border border-cyber-cyan">PASO 02</span>
+                        <i class="fa-solid fa-bolt text-cyber-cyan text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">2. Distribución de Energía</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Conectamos el pin <strong>GND</strong> del ESP32 a la línea azul (GND) de la protoboard. Luego, conectamos el pin <strong>3V3</strong> hacia la línea o riel rojo de alimentación para energizar los sensores de 3.3V.
+                    </p>
+                </div>
+
+                <!-- Paso 3 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-blue-400 space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-blue-400 font-black bg-blue-400/20 px-3 py-1 rounded-lg border border-blue-400">PASO 03</span>
+                        <i class="fa-solid fa-desktop text-blue-400 text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">3. Conexión LCD I2C</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Conectamos la pantalla directamente:<br>
+                        • <strong>GND</strong> → Riel GND protoboard<br>
+                        • <strong>VCC</strong> → Riel alimentación 5V (salida LM7805)<br>
+                        • <strong>SDA</strong> → GPIO 22 del ESP32<br>
+                        • <strong>SCL</strong> → GPIO 21 del ESP32
+                    </p>
+                </div>
+
+                <!-- Paso 4 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-cyan space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-cyan font-black bg-cyber-cyan/20 px-3 py-1 rounded-lg border border-cyber-cyan">PASO 04</span>
+                        <i class="fa-solid fa-temperature-high text-cyber-cyan text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">4. Conectar DHT22</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Conectamos el sensor de temperatura y humedad del aire:<br>
+                        • <strong>VCC</strong> → Riel de 3.3V<br>
+                        • <strong>GND</strong> → Riel GND<br>
+                        • <strong>DATA</strong> → GPIO 4 del ESP32
+                    </p>
+                </div>
+
+                <!-- Paso 5 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-yellow space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-yellow font-black bg-cyber-yellow/20 px-3 py-1 rounded-lg border border-cyber-yellow">PASO 05</span>
+                        <i class="fa-solid fa-sun text-cyber-yellow text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">5. Conectar BH1750</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Cableamos el sensor de luz ambiental:<br>
+                        • <strong>VCC</strong> → Riel de 3.3V<br>
+                        • <strong>GND</strong> → Riel GND<br>
+                        • <strong>SDA</strong> → GPIO 17 del ESP32<br>
+                        • <strong>SCL</strong> → GPIO 16 del ESP32
+                    </p>
+                </div>
+
+                <!-- Paso 6 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-green space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-green font-black bg-cyber-green/20 px-3 py-1 rounded-lg border border-cyber-green">PASO 06</span>
+                        <i class="fa-solid fa-seedling text-cyber-green text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">6. Sensor de Suelo</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Conectamos la sonda capacitiva para humedad de tierra:<br>
+                        • <strong>VCC</strong> → Riel de 3.3V<br>
+                        • <strong>GND</strong> → Riel GND<br>
+                        • <strong>AOUT / AD</strong> → GPIO 34 (Entrada analógica ADC)
+                    </p>
+                </div>
+
+                <!-- Paso 7 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-purple space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-purple font-black bg-cyber-purple/20 px-3 py-1 rounded-lg border border-cyber-purple">PASO 07</span>
+                        <i class="fa-solid fa-laptop-code text-cyber-purple text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">7. Configuración Arduino IDE</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Conectamos por USB-C. Abrimos Arduino IDE, seleccionamos la placa y puerto COM. Instalamos las librerías: <em>Adafruit Unified Sensor, BH1750, DHT sensor library, LiquidCrystal_I2C</em> y <em>PubSubClient</em>.
+                    </p>
+                </div>
+
+                <!-- Paso 8 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-yellow space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-yellow font-black bg-cyber-yellow/20 px-3 py-1 rounded-lg border border-cyber-yellow">PASO 08</span>
+                        <i class="fa-solid fa-vial text-cyber-yellow text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">8. Verificación e Integración</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Compilamos y subimos el código. Probamos primero cada sensor por separado para verificar lectura y luego subimos el código integrado completo para probar la transmisión general.
+                    </p>
+                </div>
+
+                <!-- Paso 9 -->
+                <div class="glass-panel p-6 rounded-2xl border-2 border-cyber-green space-y-3 tilt-card">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-mono text-cyber-green font-black bg-cyber-green/20 px-3 py-1 rounded-lg border border-cyber-green">PASO 09</span>
+                        <i class="fa-solid fa-box-open text-cyber-green text-xl"></i>
+                    </div>
+                    <h3 class="font-orbitron font-bold text-white text-lg pt-1">9. Diseño y Montaje en Caja</h3>
+                    <p class="text-sm text-slate-100 font-semibold leading-relaxed">
+                        Ubicamos los componentes en la caja estanca, perforamos las salidas según el plano de diseño y verificamos la conexión Wi-Fi hacia el servidor (red CONTINGENCIA).
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Galería de fotos del montaje práctico -->
+            <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-cyan/50 space-y-6">
+                <h3 class="text-2xl font-orbitron font-bold text-white flex items-center">
+                    <i class="fa-solid fa-camera text-cyber-cyan mr-3 text-2xl"></i>
+                    Registros Fotográficos del Circuito en Protoboard
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-3">
+                        <div class="overflow-hidden rounded-xl border-2 border-cyber-cyan/40 bg-slate-900">
+                            <img src="https://us-prod.asyncgw.teams.microsoft.com/v1/560eaf2a-c317-41bc-973e-0da2fff6fb24/objects/0-eus-d6-2b5e75469c2f5081b2a083b6932b2e29/views/imgpsh_fullsize" alt="Circuito en Protoboard ESP32" class="w-full h-64 object-cover hover:scale-105 transition-transform duration-300" onerror="this.src='https://placehold.co/600x400/0f172a/00f0ff?text=Detalle+del+ESP32+en+Protoboard'">
+                        </div>
+                        <p class="text-xs font-mono text-slate-300 text-center">Conexión del microcontrolador y distribución de líneas de señal/alimentación</p>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="overflow-hidden rounded-xl border-2 border-cyber-green/40 bg-slate-900">
+                            <img src="https://us-prod.asyncgw.teams.microsoft.com/v1/560eaf2a-c317-41bc-973e-0da2fff6fb24/objects/0-eus-d6-626d0e56e09ef1b2b37938b617545332/views/imgpsh_fullsize" alt="Montaje completo con pantalla y sensores" class="w-full h-64 object-cover hover:scale-105 transition-transform duration-300" onerror="this.src='https://placehold.co/600x400/0f172a/00ff66?text=Montaje+Completo+con+LCD+y+Sensores'">
+                        </div>
+                        <p class="text-xs font-mono text-slate-300 text-center">Circuito global operando con el display LCD, sensor DHT22, BH1750 y capacitivo de suelo</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- SECCIÓN 10: EQUIPO Y PROFESORES -->
+    <section id="equipo" class="py-16 px-4 relative">
+        <div class="max-w-7xl mx-auto space-y-10">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                    Equipo de Trabajo <span class="text-cyber-cyan neon-text-cyan">& Docentes</span>
+                </h2>
+                <p class="text-slate-300 font-mono font-bold">Instituto Leonardo Murialdo · 6º Info "A" · Equipo 6</p>
+                <div class="w-24 h-1.5 bg-cyber-cyan mx-auto rounded-full"></div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-cyan text-center space-y-3 tilt-card">
+                    <div class="text-4xl mb-1">👩‍💼</div>
+                    <h4 class="font-orbitron font-black text-white text-base">Ávila Sofia</h4>
+                    <span class="text-xs text-cyber-cyan font-mono font-bold block bg-cyber-cyan/10 py-1 rounded border border-cyber-cyan/30">Líder de Proyecto</span>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-purple text-center space-y-3 tilt-card">
+                    <div class="text-4xl mb-1">👩‍💻</div>
+                    <h4 class="font-orbitron font-black text-white text-base">Coronel Camila</h4>
+                    <span class="text-xs text-cyber-purple font-mono font-bold block bg-cyber-purple/10 py-1 rounded border border-cyber-purple/30">Aplicaciones</span>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-green text-center space-y-3 tilt-card">
+                    <div class="text-4xl mb-1">👨‍💻</div>
+                    <h4 class="font-orbitron font-black text-white text-base">Diez Emiliano</h4>
+                    <span class="text-xs text-cyber-green font-mono font-bold block bg-cyber-green/10 py-1 rounded border border-cyber-green/30">Programación</span>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-cyber-yellow text-center space-y-3 tilt-card">
+                    <div class="text-4xl mb-1">👩‍🔧</div>
+                    <h4 class="font-orbitron font-black text-white text-base">Madariaga Juliana</h4>
+                    <span class="text-xs text-cyber-yellow font-mono font-bold block bg-cyber-yellow/10 py-1 rounded border border-cyber-yellow/30">Infraestructura</span>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl border-2 border-blue-400 text-center space-y-3 tilt-card">
+                    <div class="text-4xl mb-1">👩‍💻</div>
+                    <h4 class="font-orbitron font-black text-white text-base">Raimondo Mia</h4>
+                    <span class="text-xs text-blue-400 font-mono font-bold block bg-blue-400/10 py-1 rounded border border-blue-400/30">Desarrollo</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-cyan/60 space-y-4">
+                    <h3 class="text-xl font-orbitron font-bold text-cyber-cyan flex items-center">
+                        <i class="fa-solid fa-chalkboard-user mr-3 text-2xl"></i>Profesores a cargo
+                    </h3>
+                    <ul class="space-y-2 font-mono font-bold text-base text-slate-100">
+                        <li class="p-2 rounded bg-slate-900 border border-cyber-cyan/30">• Barral Martin</li>
+                        <li class="p-2 rounded bg-slate-900 border border-cyber-cyan/30">• Martini Diego</li>
+                        <li class="p-2 rounded bg-slate-900 border border-cyber-cyan/30">• Pedaci Lourdes</li>
+                        <li class="p-2 rounded bg-slate-900 border border-cyber-cyan/30">• Santisi Gabriel</li>
+                        <li class="p-2 rounded bg-slate-900 border border-cyber-cyan/30">• Werner Gustavo</li>
+                    </ul>
+                </div>
+
+                <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-purple/60 space-y-4 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xl font-orbitron font-bold text-cyber-purple flex items-center">
+                            <i class="fa-solid fa-calendar-check mr-3 text-2xl"></i>Detalles de Entrega
+                        </h3>
+                        <div class="space-y-2 mt-3 font-medium text-base text-slate-100">
+                            <p><strong>Colegio:</strong> Instituto Leonardo Murialdo</p>
+                            <p><strong>Curso:</strong> 6º Año Informática "A"</p>
+                            <p><strong>Grupo:</strong> Equipo N.º 6</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 11: CONCLUSIÓN -->
+    <section id="conclusion" class="py-16 px-4 bg-slate-950 relative border-t-2 border-cyber-cyan/50">
+        <div class="max-w-4xl mx-auto space-y-6 text-center">
+            <h2 class="text-3xl md:text-5xl font-orbitron font-black text-white uppercase tracking-wider">
+                Conclusión <span class="text-cyber-green neon-text-green">Final</span>
+            </h2>
+            <div class="w-24 h-1.5 bg-cyber-green mx-auto rounded-full"></div>
+
+            <div class="glass-panel p-8 rounded-2xl border-2 border-cyber-green/60 space-y-4 text-left leading-relaxed text-white font-medium">
+                <p class="text-lg">
+                    Logramos construir una <strong class="text-cyber-green font-black">Estación de Monitoreo Ambiental</strong> económica ($80.000 ARS en total), portátil y muy precisa para medir el clima.
+                </p>
+                <p class="text-base text-slate-200">
+                    Pudimos resolver el problema crítico del display LCD reemplazando el regulador Step Down defectuoso por un regulador <strong>LM7805</strong> de 5V. Asimismo, el cambio al microcontrolador <strong>ESP NodeMCU-32S (ESP32 WROOM)</strong> garantizó la potencia de transmisión y cobertura Wi-Fi requeridas. El proyecto integró conocimientos de programación, electrónica y diseño web adquiridos durante el año.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- PIE DE PÁGINA -->
+    <footer class="glass-panel border-t-2 border-cyber-cyan/50 py-8 px-4 text-center text-sm font-mono font-bold text-slate-300">
+        <div class="max-w-7xl mx-auto space-y-2">
+            <p>© 2026 Instituto Leonardo Murialdo · 6º Info "A" · Equipo 6</p>
+            <p class="text-cyber-cyan text-base font-orbitron font-black">Estación de Monitoreo Ambiental</p>
+        </div>
+    </footer>
+
+    <!-- LÓGICA INTERACTIVA EN JAVASCRIPT -->
+    <script>
+        const menuBtn = document.getElementById('menu-btn');
+        const navLinks = document.getElementById('nav-links');
+        menuBtn.addEventListener('click', () => {
+            navLinks.classList.toggle('hidden');
+        });
+
+        const MQTT_WS_URL = 'ws://192.168.101.94:9001';
+        const MQTT_USER   = 'alumno';
+        const MQTT_PASS   = '1234';
+        const TOPICS = {
+            temp:    '6to_info/A/G6/temperatura',
+            humAire: '6to_info/A/G6/humedad',
+            lux:     '6to_info/A/G6/luminosidad',
+            suelo:   '6to_info/A/G6/humedad_suelo',
+            estado:  '6to_info/A/G6/estado'
+        };
+        const LUX_MAX = 5000;
+        const SENSOR_TIMEOUT_MS = 35000;
+
+        const datos = {
+            temp:    { v: null, ts: 0 },
+            humAire: { v: null, ts: 0 },
+            lux:     { v: null, ts: 0 },
+            suelo:   { v: null, ts: 0 }
+        };
+        let brokerConectado = false;
+        let mqttError = '';
+        let ultimaLectura = 0;
+
+        const valTemp = document.getElementById('val-temp');
+        const valHumAire = document.getElementById('val-hum-aire');
+        const valLuz = document.getElementById('val-luz');
+        const valLux = document.getElementById('val-lux');
+        const valSuelo = document.getElementById('val-suelo');
+
+        const barTemp = document.getElementById('bar-temp');
+        const barHumAire = document.getElementById('bar-hum-aire');
+        const barLuz = document.getElementById('bar-luz');
+        const barSuelo = document.getElementById('bar-suelo');
+
+        const statusTemp = document.getElementById('status-temp');
+        const statusHumAire = document.getElementById('status-hum-aire');
+        const statusSuelo = document.getElementById('status-suelo');
+
+        const lcdLine1 = document.getElementById('lcd-line1');
+        const lcdLine2 = document.getElementById('lcd-line2');
+
+        const connBadge = document.getElementById('conn-badge');
+        const connDot = document.getElementById('conn-dot');
+        const connText = document.getElementById('conn-text');
+
+        const fresco = (k) => datos[k].v !== null && (Date.now() - datos[k].ts) < SENSOR_TIMEOUT_MS;
+        const setStatus = (el, texto, color) => { el.textContent = texto; el.className = 'text-sm font-mono font-bold mt-2 ' + color; };
+
+        function updateDashboard() {
+            const okT = fresco('temp'), okH = fresco('humAire'), okL = fresco('lux'), okS = fresco('suelo');
+            const t = datos.temp.v, ha = datos.humAire.v, lux = datos.lux.v, s = datos.suelo.v;
+            const l = okL ? Math.round(Math.min(Math.max(lux / LUX_MAX * 100, 0), 100)) : null;
+
+            if (okT) {
+                valTemp.textContent = t.toFixed(1);
+                barTemp.style.width = Math.min(Math.max(((t + 10) / 60) * 100, 0), 100) + '%';
+                if (t < 10) setStatus(statusTemp, 'Baja (< 10°C)', 'text-cyan-400');
+                else if (t <= 20) setStatus(statusTemp, 'Fresca (10 a 20°C)', 'text-blue-400');
+                else if (t <= 30) setStatus(statusTemp, 'Agradable (20 a 30°C)', 'text-emerald-400');
+                else setStatus(statusTemp, 'Alta (> 30°C)', 'text-rose-400');
+            } else {
+                valTemp.textContent = '--';
+                barTemp.style.width = '0%';
+                setStatus(statusTemp, datos.temp.v === null ? 'Esperando datos...' : 'Sin lectura', 'text-slate-400');
+            }
+
+            if (okH) {
+                valHumAire.textContent = ha.toFixed(0);
+                barHumAire.style.width = Math.min(Math.max(ha, 0), 100) + '%';
+                if (ha < 30) setStatus(statusHumAire, 'Aire seco', 'text-rose-400');
+                else if (ha <= 70) setStatus(statusHumAire, 'Aire normal', 'text-slate-300');
+                else setStatus(statusHumAire, 'Aire húmedo', 'text-blue-400');
+            } else {
+                valHumAire.textContent = '--';
+                barHumAire.style.width = '0%';
+                setStatus(statusHumAire, datos.humAire.v === null ? 'Esperando datos...' : 'Sin lectura', 'text-slate-400');
+            }
+
+            if (okL) {
+                valLuz.textContent = l;
+                valLux.textContent = (lux >= 1000 ? lux.toFixed(0) : lux.toFixed(1)) + ' lx';
+                barLuz.style.width = l + '%';
+            } else {
+                valLuz.textContent = '--';
+                valLux.textContent = datos.lux.v === null ? '-- lx' : 'Sin lectura';
+                barLuz.style.width = '0%';
+            }
+
+            if (okS) {
+                valSuelo.textContent = s.toFixed(0);
+                barSuelo.style.width = Math.min(Math.max(s, 0), 100) + '%';
+                if (s < 20) setStatus(statusSuelo, 'Tierra Seca (Regar)', 'text-rose-400');
+                else if (s <= 70) setStatus(statusSuelo, 'Humedad Perfecta', 'text-emerald-400');
+                else setStatus(statusSuelo, 'Muy Mojada', 'text-blue-400');
+            } else {
+                valSuelo.textContent = '--';
+                barSuelo.style.width = '0%';
+                setStatus(statusSuelo, datos.suelo.v === null ? 'Esperando datos...' : 'Sin lectura', 'text-slate-400');
+            }
+
+            lcdLine1.textContent = `T:${okT ? t.toFixed(1) : '--'}C  HA:${okH ? ha.toFixed(0) : '--'}%`;
+            lcdLine2.textContent = `L:${okL ? l : '--'}%   HS:${okS ? s.toFixed(0) : '--'}%`;
+
+            updateBadge();
+        }
+
+        function setBadge(texto, color, pulse) {
+            const palette = {
+                green:  ['border-cyber-green text-cyber-green bg-cyber-green/20', 'bg-cyber-green'],
+                yellow: ['border-yellow-400 text-yellow-300 bg-yellow-400/20', 'bg-yellow-300'],
+                red:    ['border-rose-500 text-rose-400 bg-rose-500/20', 'bg-rose-400']
+            };
+            const [classes, dotClass] = palette[color] || palette.yellow;
+            connBadge.className = `px-5 py-2.5 rounded-xl font-orbitron text-xs font-extrabold border-2 ${classes} flex items-center space-x-2`;
+            connDot.className = `w-3 h-3 rounded-full ${dotClass} inline-block ${pulse ? 'animate-pulse' : ''}`;
+            connText.textContent = texto;
+        }
+
+        function updateBadge() {
+            const ahora = Date.now();
+            const hayConexionReciente = (ahora - ultimaLectura) < SENSOR_TIMEOUT_MS;
+
+            if (!brokerConectado) {
+                setBadge('CONECTANDO AL BROKER...', 'yellow', true);
+            } else if (mqttError) {
+                setBadge('ERROR MQTT: ' + mqttError, 'red', false);
+            } else if (!hayConexionReciente) {
+                setBadge('ESTACIÓN OFFLINE (SIN DATOS)', 'red', true);
+            } else {
+                setBadge('ESTACIÓN ONLINE (EN VIVO)', 'green', true);
+            }
+        }
+
+        // --- CONFIGURACIÓN DE CHART.JS PARA EL HISTÓRICO ---
+        const ctxHistory = document.getElementById('historyChart').getContext('2d');
+        const historyChart = new Chart(ctxHistory, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Temperatura (°C)', data: [], borderColor: '#00f0ff', backgroundColor: 'rgba(0,240,255,0.1)', tension: 0.3, yAxisID: 'y' },
+                    { label: 'Hum. Aire (%)', data: [], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', tension: 0.3, yAxisID: 'y' },
+                    { label: 'Luz (%)', data: [], borderColor: '#ffcc00', backgroundColor: 'rgba(255,204,0,0.1)', tension: 0.3, yAxisID: 'y' },
+                    { label: 'Hum. Suelo (%)', data: [], borderColor: '#00ff66', backgroundColor: 'rgba(0,255,102,0.1)', tension: 0.3, yAxisID: 'y' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { ticks: { color: '#94a3b8', font: { family: 'Rajdhani', weight: 'bold' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#94a3b8', font: { family: 'Rajdhani', weight: 'bold' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                },
+                plugins: {
+                    legend: { labels: { color: '#ffffff', font: { family: 'Orbitron', weight: 'bold' } } }
+                }
+            }
+        });
+
+        let historialRegistros = [];
+        const MAX_HISTORIAL = 50;
+
+        function registrarHistorico() {
+            const ahora = new Date();
+            const horaStr = ahora.toLocaleTimeString();
+            
+            const t = datos.temp.v !== null ? datos.temp.v : '--';
+            const ha = datos.humAire.v !== null ? datos.humAire.v : '--';
+            const lux = datos.lux.v !== null ? datos.lux.v : '--';
+            const l = (datos.lux.v !== null) ? Math.round(Math.min(Math.max(datos.lux.v / LUX_MAX * 100, 0), 100)) : '--';
+            const s = datos.suelo.v !== null ? datos.suelo.v : '--';
+
+            if (t === '--' && ha === '--' && l === '--' && s === '--') return;
+
+            let estadoGen = 'Óptimo';
+            if (typeof t === 'number' && t > 30) estadoGen = 'Temperatura Alta';
+            else if (typeof s === 'number' && s < 20) estadoGen = 'Suelo Seco (Regar)';
+            else if (typeof ha === 'number' && ha < 30) estadoGen = 'Aire Seco';
+
+            const nuevoRegistro = { fecha: ahora.toLocaleDateString(), hora: horaStr, temp: t, humAire: ha, luz: l, suelo: s, estado: estadoGen };
+            
+            historialRegistros.unshift(nuevoRegistro);
+            if (historialRegistros.length > MAX_HISTORIAL) {
+                historialRegistros.pop();
+            }
+
+            actualizarTablaYGrafico();
+        }
+
+        function actualizarTablaYGrafico() {
+            const tbody = document.getElementById('tabla-historico-body');
+            tbody.innerHTML = '';
+
+            historialRegistros.forEach(reg => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-900/80 transition-colors';
+                tr.innerHTML = `
+                    <td class="p-3.5 text-cyber-cyan">${reg.hora}</td>
+                    <td class="p-3.5">${typeof reg.temp === 'number' ? reg.temp.toFixed(1) : reg.temp}</td>
+                    <td class="p-3.5">${typeof reg.humAire === 'number' ? reg.humAire.toFixed(0) : reg.humAire}</td>
+                    <td class="p-3.5">${typeof reg.luz === 'number' ? reg.luz : reg.luz}%</td>
+                    <td class="p-3.5">${typeof reg.suelo === 'number' ? reg.suelo.toFixed(0) : reg.suelo}</td>
+                    <td class="p-3.5 text-emerald-400 font-bold">${reg.estado}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('total-registros').textContent = `${historialRegistros.length} Registros`;
+
+            const registrosOrdenados = [...historialRegistros].reverse();
+            historyChart.data.labels = registrosOrdenados.map(r => r.hora);
+            historyChart.data.datasets[0].data = registrosOrdenados.map(r => typeof r.temp === 'number' ? r.temp : null);
+            historyChart.data.datasets[1].data = registrosOrdenados.map(r => typeof r.humAire === 'number' ? r.humAire : null);
+            historyChart.data.datasets[2].data = registrosOrdenados.map(r => typeof r.luz === 'number' ? r.luz : null);
+            historyChart.data.datasets[3].data = registrosOrdenados.map(r => typeof r.suelo === 'number' ? r.suelo : null);
+            historyChart.update();
+        }
+
+        // --- CONEXIÓN MQTT POR WEBSOCKETS ---
+        const client = mqtt.connect(MQTT_WS_URL, {
+            username: MQTT_USER,
+            password: MQTT_PASS,
+            clientId: 'web_dashboard_' + Math.random().toString(16).substring(2, 8)
+        });
+
+        client.on('connect', () => {
+            brokerConectado = true;
+            mqttError = '';
+            console.log('Conectado al broker MQTT por WebSockets');
+            Object.values(TOPICS).forEach(topic => {
+                client.subscribe(topic, (err) => {
+                    if (err) console.error('Error al suscribirse a', topic, err);
+                });
+            });
+        });
+
+        client.on('error', (err) => {
+            console.error('Error MQTT:', err);
+            brokerConectado = false;
+            mqttError = err.message || 'Error de conexión';
+            updateDashboard();
+        });
+        
+        // --- RECEPCIÓN DE DATOS DE LOS SENSORES ---
+        client.on('message', (topic, message) => {
+            const valor = parseFloat(message.toString());
+            if (isNaN(valor)) return;          // ignora mensajes no numéricos (ej. "estado")
+
+            const ahora = Date.now();
+            if (topic === TOPICS.temp)         datos.temp    = { v: valor, ts: ahora };
+            else if (topic === TOPICS.humAire) datos.humAire = { v: valor, ts: ahora };
+            else if (topic === TOPICS.lux)     datos.lux     = { v: valor, ts: ahora };
+            else if (topic === TOPICS.suelo)   datos.suelo   = { v: valor, ts: ahora };
+            else return;
+
+            ultimaLectura = ahora;
+            updateDashboard();
+        });
+
+        client.on('close',   () => { brokerConectado = false; updateDashboard(); });
+        client.on('offline', () => { brokerConectado = false; updateDashboard(); });
+
+        // Refresca el estado (online/offline y "sin lectura") cada segundo
+        setInterval(updateDashboard, 1000);
+
+        // Guarda un registro en el histórico cada 10 s (igual que la publicación del ESP32)
+        setInterval(registrarHistorico, 10000);
+
+        // --- BOTÓN: EXPORTAR CSV ---
+        document.getElementById('btn-exportar').addEventListener('click', () => {
+            if (historialRegistros.length === 0) {
+                alert('Todavía no hay registros para exportar. Esperá a que lleguen lecturas de la estación.');
+                return;
+            }
+            // Separador ";" y decimales con coma: así Excel en español lo abre en columnas
+            const num = (v, dec) => typeof v === 'number' ? v.toFixed(dec).replace('.', ',') : '';
+            const filas = [['Fecha', 'Hora', 'Temperatura (C)', 'Humedad aire (%)', 'Luz (%)', 'Humedad suelo (%)', 'Estado general']];
+            [...historialRegistros].reverse().forEach(r => {
+                filas.push([r.fecha || '', r.hora, num(r.temp, 1), num(r.humAire, 0), num(r.luz, 0), num(r.suelo, 0), r.estado]);
+            });
+            const csv = filas.map(f => f.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            a.href = url;
+            a.download = `historico_estacion_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+
+        // --- BOTÓN: LIMPIAR HISTÓRICO ---
+        document.getElementById('btn-limpiar').addEventListener('click', () => {
+            if (historialRegistros.length === 0) return;
+            if (!confirm('¿Seguro que querés borrar los ' + historialRegistros.length + ' registros del histórico?')) return;
+            historialRegistros = [];
+            actualizarTablaYGrafico();
+        });
+    
+        // ===== SENSORES EXPLICADOS (botones + detalle) =====
+        const SENSORES = {
+            dht22: {
+                nombre: 'DHT22', sub: 'Temperatura y Humedad del aire', color: 'cyan', borde: 'border-cyber-cyan/50', texto: 'text-cyber-cyan',
+                que: 'El DHT22 es el sensor que "siente" el clima del aire. Dentro tiene un termistor (cambia su resistencia con el calor) y un sensor capacitivo de humedad. Un pequeño chip convierte esas medidas en números y se los manda al ESP32 por un solo cable de datos.',
+                datos: [['Temperatura', '-40 °C a 80 °C (±0,5 °C)'], ['Humedad', '0 % a 100 % (±2 %)'], ['Frecuencia', 'Una lectura cada ~2 segundos']],
+                grupos: [
+                    { titulo: '¿Cómo interpretar la temperatura?', items: [
+                        ['❄️', 'Menos de 10 °C', 'Temperatura Baja', 'cyan'], ['🍃', '10 °C a 20 °C', 'Temperatura Fresca', 'blue'],
+                        ['😊', '20 °C a 30 °C', 'Temperatura Agradable', 'emerald'], ['🔥', 'Más de 30 °C', 'Temperatura Alta', 'rose'] ] },
+                    { titulo: '¿Cómo interpretar la humedad del aire?', items: [
+                        ['🏜️', 'Menos de 30 %', 'Aire Seco', 'rose'], ['😊', '30 % a 70 %', 'Aire Normal', 'emerald'], ['💧', 'Más de 70 %', 'Aire Húmedo', 'blue'] ] }
+                ]
+            },
+            bh1750: {
+                nombre: 'BH1750', sub: 'Sensor de luz', color: 'yellow', borde: 'border-cyber-yellow/50', texto: 'text-cyber-yellow',
+                que: 'El BH1750 tiene un fotodiodo que convierte la luz que recibe en una señal eléctrica. La mide en lux, la unidad de iluminación, y como está ajustado a la sensibilidad del ojo humano, el valor se parece a cómo vemos nosotros la luz. Se comunica con el ESP32 por el protocolo I2C.',
+                datos: [['Rango', '1 a 65.535 lx'], ['Unidad', 'Lux (lx)'], ['Comunicación', 'I2C (2 cables)']],
+                grupos: [
+                    { titulo: '¿Cómo interpretar la luz?', items: [
+                        ['🌑', 'Menos de 100 lx', 'Oscuro', 'slate'], ['💡', '100 a 1.000 lx', 'Luz de interior', 'amber'],
+                        ['⛅', '1.000 a 5.000 lx', 'Muy luminoso', 'yellow'], ['☀️', 'Más de 5.000 lx', 'Sol intenso', 'orange'] ] }
+                ],
+                nota: 'En el panel, el porcentaje de luz se calcula sobre 5.000 lx: ese valor equivale al 100 %.'
+            },
+            suelo: {
+                nombre: 'Capacitivo v1.2', sub: 'Humedad de la tierra', color: 'green', borde: 'border-cyber-green/50', texto: 'text-cyber-green',
+                que: 'Este sensor mide cuánta agua hay en la tierra usando capacitancia: el agua cambia la forma en que la tierra almacena carga eléctrica y el sensor traduce ese cambio en un porcentaje. A diferencia de los sensores resistivos, no tiene metal expuesto, así que no se corroe y dura mucho más.',
+                datos: [['Lectura', '0 % (seco) a 100 % (mojado)'], ['Tipo', 'Capacitivo, sin corrosión'], ['Salida', 'Analógica al ESP32']],
+                grupos: [
+                    { titulo: '¿Cómo interpretar la humedad de la tierra?', items: [
+                        ['🌵', 'Menos de 20 %', 'Tierra Seca (Regar)', 'rose'], ['🌱', '20 % a 70 %', 'Humedad Perfecta', 'emerald'], ['🌊', 'Más de 70 %', 'Muy Mojada', 'blue'] ] }
+                ],
+                nota: 'Clavalo en la tierra hasta la línea marcada y no sumerjas la parte electrónica.'
+            },
+            lcd: {
+                nombre: 'LCD 16x2', sub: 'Pantalla local', color: 'blue', borde: 'border-blue-400/50', texto: 'text-blue-400',
+                que: 'La pantalla LCD 16x2 tiene 2 líneas de 16 caracteres cada una. Muestra los valores de los sensores directo en el dispositivo, sin necesidad de internet ni de un celular. Se conecta por I2C, así que usa solo 4 cables.',
+                datos: [['Tamaño', '2 líneas × 16 caracteres'], ['Conexión', 'I2C (módulo adaptador)'], ['Internet', 'No lo necesita']],
+                grupos: [
+                    { titulo: '¿Cómo interpretar la pantalla?', items: [
+                        ['🌡️', 'T: 24.5C', 'Temperatura en °C', 'cyan'], ['💧', 'HA: 55%', 'Humedad del aire', 'blue'],
+                        ['☀️', 'L: 40%', 'Luz (% sobre 5.000 lx)', 'yellow'], ['🌱', 'HS: 60%', 'Humedad de la tierra', 'emerald'] ] }
+                ],
+                nota: 'Si en lugar de un número ves "--", ese sensor todavía no mandó datos o dejó de responder.'
+            }
+        };
+        const COLORES_SENSOR = {
+            cyan: ['bg-cyan-950/80', 'border-cyan-400', 'text-cyan-300'], blue: ['bg-blue-950/80', 'border-blue-400', 'text-blue-300'],
+            emerald: ['bg-emerald-950/80', 'border-emerald-400', 'text-emerald-300'], rose: ['bg-rose-950/80', 'border-rose-400', 'text-rose-300'],
+            yellow: ['bg-yellow-950/80', 'border-yellow-400', 'text-yellow-300'], amber: ['bg-amber-950/80', 'border-amber-400', 'text-amber-300'],
+            orange: ['bg-orange-950/80', 'border-orange-400', 'text-orange-300'], slate: ['bg-slate-900', 'border-slate-400', 'text-slate-300']
+        };
+        const detalleSensor = document.getElementById('sensor-detalle');
+        const botonesSensor = document.querySelectorAll('.sensor-btn');
+
+        function mostrarSensor(id) {
+            const s = SENSORES[id];
+            if (!s) return;
+            botonesSensor.forEach(b => {
+                const activo = b.dataset.sensor === id;
+                b.setAttribute('aria-selected', activo);
+                b.classList.toggle('ring-2', activo);
+                b.classList.toggle('ring-white', activo);
+                b.classList.toggle('bg-slate-800', activo);
+            });
+            const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            const grupos = s.grupos.map(g => `
+                <div class="space-y-3">
+                    <h4 class="text-lg font-orbitron font-bold text-white flex items-center"><i class="fa-solid fa-list-check ${s.texto} mr-3"></i>${esc(g.titulo)}</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        ${g.items.map(([emoji, rango, nombre, c]) => { const k = COLORES_SENSOR[c]; return `
+                        <div class="p-4 rounded-xl ${k[0]} border-2 ${k[1]} flex items-center space-x-3">
+                            <span class="text-3xl">${emoji}</span>
+                            <div><span class="text-xs font-mono ${k[2]} font-black">${esc(rango)}</span>
+                            <p class="font-bold text-white text-base">${esc(nombre)}</p></div>
+                        </div>`; }).join('')}
+                    </div>
+                </div>`).join('');
+            detalleSensor.className = `glass-panel p-6 md:p-8 rounded-2xl border-2 ${s.borde} space-y-6`;
+            detalleSensor.innerHTML = `
+                <div>
+                    <h3 class="text-2xl font-orbitron font-black text-white">${esc(s.nombre)} <span class="text-sm font-mono ${s.texto}">· ${esc(s.sub)}</span></h3>
+                    <p class="text-slate-100 font-medium leading-relaxed mt-3">${esc(s.que)}</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    ${s.datos.map(([k, v]) => `<div class="p-3 rounded-xl bg-slate-900 border border-slate-600"><span class="text-xs font-mono ${s.texto} font-black block">${esc(k)}</span><span class="text-white font-bold text-sm">${esc(v)}</span></div>`).join('')}
+                </div>
+                ${grupos}
+                ${s.nota ? `<p class="text-sm text-slate-200 font-medium border-l-4 ${s.borde.replace('/50', '')} pl-3"><i class="fa-solid fa-lightbulb ${s.texto} mr-2"></i>${esc(s.nota)}</p>` : ''}`;
+        }
+        botonesSensor.forEach(b => b.addEventListener('click', () => mostrarSensor(b.dataset.sensor)));
+        mostrarSensor('dht22');
+    </script>
+</body>
+</html>
